@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -20,12 +21,16 @@ public class WeChatServiceStateService {
     private static final Logger logger = LoggerFactory.getLogger(WeChatServiceStateService.class);
     private final RestTemplate restTemplate;
     private final AccessTokenManager accessTokenManager;
+    private final boolean enabled;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public WeChatServiceStateService(RestTemplate restTemplate,
-                                     AccessTokenManager accessTokenManager) {
+                                     AccessTokenManager accessTokenManager,
+                                     @Value("${WECHAT_SERVICE_STATE_ENABLED:false}") boolean enabled) {
         this.restTemplate = restTemplate;
         this.accessTokenManager = accessTokenManager;
+        this.enabled = enabled;
+        logger.info("微信客服 service_state 接口开关: {}", enabled ? "启用" : "停用（API-only 人工模式）");
     }
 
     public record StateResult(boolean success, int errcode, String errmsg) {
@@ -35,6 +40,9 @@ public class WeChatServiceStateService {
      * 把会话切回智能助手接待，让 AI 重新接管。
      */
     public StateResult backToAi(String externalUserId, String openKfid) {
+        if (!enabled) {
+            return new StateResult(true, 0, "service-state-disabled");
+        }
         if (openKfid == null || openKfid.isBlank()) {
             return new StateResult(false, -1, "缺少客服账号 open_kfid");
         }
@@ -42,6 +50,9 @@ public class WeChatServiceStateService {
     }
 
     public StateResult endSession(String externalUserId, String openKfid) {
+        if (!enabled) {
+            return new StateResult(true, 0, "service-state-disabled");
+        }
         if (openKfid == null || openKfid.isBlank()) {
             return new StateResult(false, -1, "缺少客服账号 open_kfid");
         }
@@ -49,6 +60,9 @@ public class WeChatServiceStateService {
     }
 
     public StateResult transState(String externalUserId, String openKfid, int state) {
+        if (!enabled) {
+            return new StateResult(true, 0, "service-state-disabled");
+        }
         try {
             String accessToken = accessTokenManager.getAccessToken();
             String url = "https://qyapi.weixin.qq.com/cgi-bin/kf/service_state/trans?access_token=" + accessToken;
