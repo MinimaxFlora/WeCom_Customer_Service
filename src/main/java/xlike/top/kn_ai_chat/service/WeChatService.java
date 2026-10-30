@@ -442,9 +442,9 @@ public class WeChatService {
         sendRequest("text", toUser, openKfid, contentMap);
     }
 
-    public void sendImageMessage(String toUser, String openKfid, String mediaId) {
+    public boolean sendImageMessage(String toUser, String openKfid, String mediaId) {
         Map<String, Object> contentMap = Map.of("media_id", mediaId);
-        sendRequest("image", toUser, openKfid, contentMap);
+        return sendRequest("image", toUser, openKfid, contentMap);
     }
     
     public void sendVoiceMessage(String toUser, String openKfid, String mediaId) {
@@ -457,12 +457,12 @@ public class WeChatService {
         sendRequest("video", toUser, openKfid, contentMap);
     }
 
-    public void sendFileMessage(String toUser, String openKfid, String mediaId) {
+    public boolean sendFileMessage(String toUser, String openKfid, String mediaId) {
         Map<String, Object> contentMap = Map.of("media_id", mediaId);
-        sendRequest("file", toUser, openKfid, contentMap);
+        return sendRequest("file", toUser, openKfid, contentMap);
     }
     
-    public void sendRequest(String msgType, String toUser, String openKfid, Map<String, Object> contentMap) {
+    public boolean sendRequest(String msgType, String toUser, String openKfid, Map<String, Object> contentMap) {
         String accessToken = accessTokenManager.getAccessToken();
         String url = "https://qyapi.weixin.qq.com/cgi-bin/kf/send_msg?access_token=" + accessToken;
 
@@ -479,9 +479,12 @@ public class WeChatService {
             JsonNode root = objectMapper.readTree(response);
             if (root.get("errcode").asInt() != 0) {
                 logger.error("发送 {} 消息失败: {}", msgType, response);
+                return false;
             }
+            return true;
         } catch (Exception e) {
             logger.error("调用发送 {} 消息接口失败", msgType, e);
+            return false;
         }
     }
 

@@ -11,12 +11,17 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import xlike.top.kn_ai_chat.domain.ChatMessage;
+import xlike.top.kn_ai_chat.enums.MediaType;
 import xlike.top.kn_ai_chat.repository.ChatMessageRepository;
+import xlike.top.kn_ai_chat.service.MediaService;
 import xlike.top.kn_ai_chat.service.WeChatKfAccountService;
 import xlike.top.kn_ai_chat.service.WeChatService;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -34,15 +39,18 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
     private final WeChatService weChatService;
     private final StringRedisTemplate redisTemplate;
     private final WeChatKfAccountService weChatKfAccountService;
+    private final MediaService mediaService;
 
     public AdminWebSocketHandler(ChatMessageRepository chatMessageRepository,
                                  WeChatService weChatService,
                                  StringRedisTemplate redisTemplate,
-                                 WeChatKfAccountService weChatKfAccountService) {
+                                 WeChatKfAccountService weChatKfAccountService,
+                                 MediaService mediaService) {
         this.chatMessageRepository = chatMessageRepository;
         this.weChatService = weChatService;
         this.redisTemplate = redisTemplate;
         this.weChatKfAccountService = weChatKfAccountService;
+        this.mediaService = mediaService;
     }
 
 
@@ -107,17 +115,76 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
                     weChatService.sendTextMessage(recipientId, openKfid, content);
                     break;
                 case IMAGE:
-                    logger.info("模拟发送图片消息给 {},内容是：{}", recipientId, content);
+                    sendMedia(recipientId, openKfid, content, msgData.get("meta"), MediaType.IMAGE);
                     break;
                 case FILE:
-                    logger.info("模拟发送文件消息给 {}", recipientId);
+                    sendMedia(recipientId, openKfid, content, msgData.get("meta"), MediaType.FILE);
                     break;
             }
 
         } catch (Exception e) {
             logger.error("处理或发送管理员消息失败", e);
-            session.sendMessage(new TextMessage("{\"error\":\"发送失败\"}"));
+            String error = e.getMessage() == null ? "发送失败" : e.getMessage();
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of("error", error))));
         }
+    }
+
+    private void sendMedia(String recipientId, String openKfid, String dataUrl, Object metaObj,
+                           MediaType mediaType) throws IOException {
+        String mediaId = uploadDataUrl(dataUrl, metaObj, mediaType);
+        boolean sent = mediaType == MediaType.IMAGE
+                ? weChatService.sendImageMessage(recipientId, openKfid, mediaId)
+                : weChatService.sendFileMessage(recipientId, openKfid, mediaId);
+        if (!sent) {
+            throw new IOException("微信客服拒绝发送 " + mediaType.getTypeName() + " 消息");
+        }
+        logger.info("已通过微信客服发送 {} 消息给 {}", mediaType.getTypeName(), recipientId);
+    }
+
+    private String uploadDataUrl(String dataUrl, Object metaObj, MediaType mediaType) throws IOException {
+        if (dataUrl == null || !dataUrl.startsWith("data:")) {
+            throw new IOException("媒体内容不是 data URL");
+        }
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0) {
+            throw new IOException("媒体 data URL 格式错误");
+        }
+        String header = dataUrl.substring(0, comma).toLowerCase();
+        byte[] bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1));
+        long maxBytes = mediaType == MediaType.IMAGE ? 2L * 1024 * 1024 : 20L * 1024 * 1024;
+        if (bytes.length > maxBytes) {
+            throw new IOException("媒体文件超过微信客服限制: " + bytes.length + " bytes");
+        }
+
+        String fileName = "";
+        if (metaObj instanceof Map<?, ?> meta) {
+            Object value = meta.get("fileName");
+            if (value != null) {
+                fileName = value.toString();
+            }
+        }
+        String extension = extensionOf(fileName, header);
+        File temp = File.createTempFile("admin-media-", extension);
+        try {
+            Files.write(temp.toPath(), bytes);
+            return mediaService.uploadTemporaryMedia(temp, mediaType)
+                    .orElseThrow(() -> new IOException("微信客服临时素材上传失败"));
+        } finally {
+            Files.deleteIfExists(temp.toPath());
+        }
+    }
+
+    private String extensionOf(String fileName, String dataHeader) {
+        int dot = fileName == null ? -1 : fileName.lastIndexOf('.');
+        if (dot >= 0 && dot < fileName.length() - 1) {
+            return fileName.substring(dot);
+        }
+        if (dataHeader.contains("png")) return ".png";
+        if (dataHeader.contains("jpeg") || dataHeader.contains("jpg")) return ".jpg";
+        if (dataHeader.contains("gif")) return ".gif";
+        if (dataHeader.contains("pdf")) return ".pdf";
+        if (dataHeader.contains("zip")) return ".zip";
+        return ".bin";
     }
 
     @Override

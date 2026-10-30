@@ -386,6 +386,10 @@
             socket.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data);
+                    if (msg.error) {
+                        alert('发送失败：' + msg.error);
+                        return;
+                    }
                     if (msg.senderType === 'USER') {
                         if (msg.externalUserId === currentChatUser?.id) {
                             appendMessage(msg);
@@ -471,6 +475,11 @@
         }
 
         function sendFile(file, type) {
+            const maxBytes = type === 'image' ? 2 * 1024 * 1024 : 20 * 1024 * 1024;
+            if (file.size > maxBytes) {
+                alert(type === 'image' ? '图片不能超过 2MB' : '文件不能超过 20MB');
+                return;
+            }
             const reader = new FileReader();
             reader.onload = e => {
                 const message = {
