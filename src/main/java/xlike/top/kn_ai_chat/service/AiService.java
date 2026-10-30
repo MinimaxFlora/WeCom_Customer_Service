@@ -298,6 +298,12 @@ public class AiService {
 
     private String executeChatCompletion(List<Map<String, String>> messages, String baseUrl, String apiKey,
                                          String model, double temperature, int maxTokens) {
+        return executeChatCompletion(messages, baseUrl, apiKey, model, temperature, maxTokens, true, true);
+    }
+
+    private String executeChatCompletion(List<Map<String, String>> messages, String baseUrl, String apiKey,
+                                         String model, double temperature, int maxTokens,
+                                         boolean jsonMode, boolean allowRetry) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + apiKey);
@@ -308,7 +314,9 @@ public class AiService {
         requestBody.put("stream", false);
         requestBody.put("temperature", temperature);
         requestBody.put("max_tokens", maxTokens);
-        requestBody.put("response_format", Map.of("type", "json_object"));
+        if (jsonMode) {
+            requestBody.put("response_format", Map.of("type", "json_object"));
+        }
 
         HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
 
@@ -322,15 +330,41 @@ public class AiService {
                 if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
                     String contentJsonString = firstChoice.get("message").get("content").asText();
                     logger.debug("准备解析AI内容JSON，长度: {}", contentJsonString.length());
-                    JsonNode contentRoot = objectMapper.readTree(contentJsonString);
-                    return parseAiContent(contentRoot);
+                    if (contentJsonString == null || contentJsonString.isBlank()) {
+                        logger.warn("AI返回内容为空");
+                        if (allowRetry) {
+                            return executeChatCompletion(messages, baseUrl, apiKey, model,
+                                    temperature, maxTokens, false, false);
+                        }
+                    } else {
+                        JsonNode contentRoot = objectMapper.readTree(contentJsonString);
+                        String parsed = parseAiContent(contentRoot);
+                        if (allowRetry && isUnusable(parsed)) {
+                            logger.warn("AI内容解析失败，尝试关闭 JSON 模式重试一次");
+                            return executeChatCompletion(messages, baseUrl, apiKey, model,
+                                    temperature, maxTokens, false, false);
+                        }
+                        return parsed;
+                    }
                 }
             }
         } catch (Exception e) {
             logger.error("调用AI模型接口或解析JSON失败", e);
         }
 
-        return "抱歉，AI服务当前不可用，请稍后再试。";
+        if (allowRetry) {
+            logger.warn("AI调用失败，尝试关闭 JSON 模式重试一次");
+            return executeChatCompletion(messages, baseUrl, apiKey, model,
+                    temperature, maxTokens, false, false);
+        }
+        return "抱歉，我暂时无法回答这个问题，请稍后再试或回复“转人工”。";
+    }
+
+    private boolean isUnusable(String text) {
+        return text == null || text.isBlank()
+                || text.startsWith("AI回复格式错误")
+                || text.startsWith("抱歉，我暂时无法回答")
+                || text.startsWith("抱歉，AI服务当前不可用");
     }
 
     /**

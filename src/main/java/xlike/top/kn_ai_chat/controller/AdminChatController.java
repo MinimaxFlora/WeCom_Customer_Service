@@ -12,7 +12,6 @@ import xlike.top.kn_ai_chat.repository.ManualTransferRepository;
 import xlike.top.kn_ai_chat.service.ManualTransferService;
 import xlike.top.kn_ai_chat.service.WeChatKfAccountService;
 import xlike.top.kn_ai_chat.service.WeChatService;
-import xlike.top.kn_ai_chat.service.WeChatServiceStateService;
 
 import java.util.List;
 import java.util.Optional;
@@ -75,15 +74,9 @@ public class AdminChatController {
             return ResponseEntity.status(401).build();
         }
 
-        WeChatServiceStateService.StateResult result = manualTransferService.resolve(userId);
+        manualTransferService.resolve(userId);
         String openKfid = weChatKfAccountService.getOpenKfid();
         weChatService.sendTextMessage(userId, openKfid, "人工服务已结束，现在将由智能小助手继续为您服务。");
-        if (!result.success()) {
-            // 当前 Secret 没有会话管理权限时会返回 48002。
-            // 本地人工状态已经清除，不能因为微信侧切换失败而让后台“结束服务”失败。
-            return ResponseEntity.ok("本地人工服务已结束，AI 已恢复；微信侧状态未切换（errcode="
-                    + result.errcode() + "），如客户仍无回复，请在微信客服工作台结束会话。");
-        }
         return ResponseEntity.ok("已结束人工服务，AI 已恢复接待。");
     }
 }

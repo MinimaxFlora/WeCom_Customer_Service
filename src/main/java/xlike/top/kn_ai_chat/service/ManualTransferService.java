@@ -16,19 +16,13 @@ public class ManualTransferService {
     private final ManualTransferRepository repository;
     private final ManualModeService manualModeService;
     private final EmailService emailService;
-    private final WeChatServiceStateService serviceStateService;
-    private final WeChatKfAccountService kfAccountService;
 
     public ManualTransferService(ManualTransferRepository repository,
                                  ManualModeService manualModeService,
-                                 EmailService emailService,
-                                 WeChatServiceStateService serviceStateService,
-                                 WeChatKfAccountService kfAccountService) {
+                                 EmailService emailService) {
         this.repository = repository;
         this.manualModeService = manualModeService;
         this.emailService = emailService;
-        this.serviceStateService = serviceStateService;
-        this.kfAccountService = kfAccountService;
     }
 
     @Transactional
@@ -56,20 +50,11 @@ public class ManualTransferService {
     }
 
     @Transactional
-    public WeChatServiceStateService.StateResult resolve(String externalUserId) {
-        ManualTransferRequest request = repository.findByExternalUserId(externalUserId).orElse(null);
-        String openKfid = request != null && request.getOpenKfid() != null && !request.getOpenKfid().isBlank()
-                ? request.getOpenKfid() : kfAccountService.getOpenKfid();
-        WeChatServiceStateService.StateResult result = serviceStateService.backToAi(externalUserId, openKfid);
-        if (!result.success()) {
-            logger.warn("微信侧会话未能切回 AI，用户 [{}]，errcode={}。请在微信客服工作台手动结束会话。",
-                    externalUserId, result.errcode());
-        }
-        if (request != null) {
+    public void resolve(String externalUserId) {
+        repository.findByExternalUserId(externalUserId).ifPresent(request -> {
             request.setResolved(true);
             repository.save(request);
-        }
+        });
         manualModeService.exit(externalUserId);
-        return result;
     }
 }
