@@ -30,9 +30,9 @@ public class UserConfigController {
     }
 
     @PostMapping("/ai")
-    public ResponseEntity<AiConfig> saveAiConfig(@RequestBody AiConfig aiConfig) {
+    public ResponseEntity<AiConfigView> saveAiConfig(@RequestBody AiConfig aiConfig) {
         AiConfig savedConfig = userConfigService.saveOrUpdateAiConfig(aiConfig);
-        return ResponseEntity.ok(savedConfig);
+        return ResponseEntity.ok(AiConfigView.from(savedConfig));
     }
 
     @GetMapping("/keywords/{externalUserId}")

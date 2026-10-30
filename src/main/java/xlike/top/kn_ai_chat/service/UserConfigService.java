@@ -349,8 +349,14 @@ public class UserConfigService {
                 aiConfig.setRagApiKey(existing.getRagApiKey());
             }
         }
-        if (!StringUtils.hasText(aiConfig.getRagApiKey())) {
+        if (!StringUtils.hasText(aiConfig.getRagApiKey()) && isSiliconFlow(aiConfig.getAiBaseUrl())) {
             aiConfig.setRagApiKey(aiConfig.getAiApiKey());
+        }
+        // 避免把 DeepSeek 等聊天 Key 误当成 Embedding Key 使用
+        if (!isSiliconFlow(aiConfig.getAiBaseUrl())
+                && aiConfig.getRagApiKey() != null
+                && aiConfig.getRagApiKey().equals(aiConfig.getAiApiKey())) {
+            aiConfig.setRagApiKey(null);
         }
         aiConfig.setLastModified(LocalDateTime.now());
         logger.info("保存或更新用户 {} 的AI配置。", aiConfig.getExternalUserId());
@@ -359,6 +365,10 @@ public class UserConfigService {
 
     private boolean isMaskedOrBlank(String value) {
         return !StringUtils.hasText(value) || value.contains("****");
+    }
+
+    private boolean isSiliconFlow(String baseUrl) {
+        return baseUrl != null && baseUrl.toLowerCase().contains("siliconflow");
     }
 
     public Map<String, List<String>> getAllKeywords(String externalUserId) {
