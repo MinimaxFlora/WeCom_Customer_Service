@@ -337,7 +337,14 @@ public class AiService {
                                     temperature, maxTokens, false, false);
                         }
                     } else {
-                        JsonNode contentRoot = objectMapper.readTree(contentJsonString);
+                        JsonNode contentRoot;
+                        try {
+                            contentRoot = objectMapper.readTree(contentJsonString);
+                        } catch (Exception parseError) {
+                            // DeepSeek 关闭 JSON 模式后可能直接返回自然语言，不能再按 JSON 解析
+                            logger.warn("AI返回非JSON文本，按纯文本返回");
+                            return contentJsonString.trim();
+                        }
                         String parsed = parseAiContent(contentRoot);
                         if (allowRetry && isUnusable(parsed)) {
                             logger.warn("AI内容解析失败，尝试关闭 JSON 模式重试一次");
