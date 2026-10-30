@@ -8,6 +8,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import xlike.top.kn_ai_chat.domain.EnterpriseProfile;
 import xlike.top.kn_ai_chat.domain.Knowledge;
 import xlike.top.kn_ai_chat.domain.KnowledgeChunk;
 import xlike.top.kn_ai_chat.dto.KnowledgeHit;
@@ -54,17 +55,20 @@ public class EnterpriseKnowledgeService {
     private final FileStorage fileStorage;
     private final KnowledgeIndexService indexService;
     private final EmbeddingService embeddingService;
+    private final EnterpriseProfileService profileService;
 
     public EnterpriseKnowledgeService(KnowledgeBaseRepository knowledgeRepository,
                                       KnowledgeChunkRepository chunkRepository,
                                       FileStorage fileStorage,
                                       KnowledgeIndexService indexService,
-                                      EmbeddingService embeddingService) {
+                                      EmbeddingService embeddingService,
+                                      EnterpriseProfileService profileService) {
         this.knowledgeRepository = knowledgeRepository;
         this.chunkRepository = chunkRepository;
         this.fileStorage = fileStorage;
         this.indexService = indexService;
         this.embeddingService = embeddingService;
+        this.profileService = profileService;
     }
 
     public List<KnowledgeSummary> list(String category, String status, String keyword) {
@@ -209,9 +213,6 @@ public class EnterpriseKnowledgeService {
             return List.of();
         }
         List<KnowledgeChunk> chunks = chunkRepository.findByEnterpriseIdAndScope(ENTERPRISE_ID, SCOPE);
-        if (chunks.isEmpty()) {
-            return List.of();
-        }
         Map<Long, Knowledge> knowledgeById = knowledgeRepository
                 .findByEnterpriseIdAndScopeAndEnabledTrueOrderByCreatedAtDesc(ENTERPRISE_ID, SCOPE)
                 .stream().collect(java.util.stream.Collectors.toMap(Knowledge::getId, k -> k));
@@ -241,10 +242,31 @@ public class EnterpriseKnowledgeService {
                 ));
             }
         }
+        // 企业资料是结构化公共知识，不依赖文档切片；企业介绍类问题必须能命中它
+        if (isProfileQuestion(query)) {
+            String profile = buildProfileContext();
+            if (StringUtils.hasText(profile)) {
+                hits.add(new KnowledgeHit(0L, "企业资料", "COMPANY", profile, 0.9));
+            }
+        }
         return hits.stream()
                 .sorted(Comparator.comparingDouble(KnowledgeHit::score).reversed())
                 .limit(Math.max(1, topK))
                 .toList();
+    }
+
+    private boolean isProfileQuestion(String query) {
+        if (query == null) {
+            return false;
+        }
+        String[] hints = {"公司", "企业", "干什么", "做什么", "做啥", "干嘛", "业务",
+                "介绍", "简介", "行业", "服务范围", "地址", "电话", "营业", "联系", "在哪", "哪里"};
+        for (String hint : hints) {
+            if (query.contains(hint)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String buildContext(String query, int topK) {
@@ -268,7 +290,23 @@ public class EnterpriseKnowledgeService {
     }
 
     public String buildProfileContext() {
-        return "";
+        EnterpriseProfile profile = profileService.get();
+        StringBuilder sb = new StringBuilder();
+        appendProfile(sb, "企业名称", profile.getName());
+        appendProfile(sb, "企业简介", profile.getIntro());
+        appendProfile(sb, "所属行业", profile.getIndustry());
+        appendProfile(sb, "企业地址", profile.getAddress());
+        appendProfile(sb, "联系电话", profile.getPhone());
+        appendProfile(sb, "官方网站", profile.getWebsite());
+        appendProfile(sb, "营业时间", profile.getBusinessHours());
+        appendProfile(sb, "服务范围", profile.getServiceScope());
+        return sb.toString().trim();
+    }
+
+    private void appendProfile(StringBuilder sb, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            sb.append(label).append("：").append(value.trim()).append("\n");
+        }
     }
 
     private double lexicalScore(String query, String content, String title) {
