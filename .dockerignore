@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+target
+data
+uploads
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+files
+docker

@@ -1,10 +1,10 @@
 services:
   app:
-    image: xlike0616/kn_ai_chat:latest
-    container_name: kn-ai-chat-app
-    restart: always
+    image: dockorae/wecom-customer-service:latest
+    container_name: wecom-customer-service
+    restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "${DOCKER_SERVER_PORT:-8081}:8081"
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -13,20 +13,20 @@ services:
     depends_on:
       - redis
     networks:
-      - kn-ai-network
+      - wecom-network
 
   redis:
-    image: redis:latest
-    container_name: ${REDIS_HOST}
-    restart: always
-    command: redis-server --port ${REDIS_PORT} --requirepass ${REDIS_PASSWORD}
+    image: redis:7-alpine
+    container_name: ${REDIS_HOST:-wecom-redis}
+    restart: unless-stopped
+    command: redis-server --port ${REDIS_PORT:-16379} --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
-      - kn-ai-network
+      - wecom-network
 
 networks:
-  kn-ai-network:
+  wecom-network:
     driver: bridge
 
 volumes:

@@ -11,8 +11,15 @@
     <groupId>xlike.top</groupId>
     <artifactId>kn_ai_chat</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>kn_ai_chat</name>
-    <description>kn_ai_chat</description>
+    <name>WeCom Customer Service</name>
+    <description>Enterprise WeCom / WeChat Customer Service AI assistant with knowledge-base RAG and manual takeover</description>
+    <url>https://github.com/MinimaxFlora/WeCom_Customer_Service</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/license/mit</url>
+        </license>
+    </licenses>
 
     <properties>
         <java.version>21</java.version>
