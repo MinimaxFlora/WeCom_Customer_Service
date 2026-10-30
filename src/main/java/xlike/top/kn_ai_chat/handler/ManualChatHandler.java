@@ -57,9 +57,13 @@ public class ManualChatHandler implements MessageHandler {
         boolean exit = userConfigService.getKeywordsForHandler(externalUserId, "ManualChatHandler_Exit")
                 .stream().anyMatch(kw -> kw.equalsIgnoreCase(trimmed));
         if (exit) {
-            manualTransferService.resolve(externalUserId);
-            logger.info("用户 [{}] 结束人工服务", externalUserId);
-            return Optional.of(new TextReply("您已结束人工服务，现在将由智能小助手继续为您服务。"));
+            var result = manualTransferService.resolve(externalUserId);
+            logger.info("用户 [{}] 结束人工服务，微信会话状态切换成功={}", externalUserId, result.success());
+            if (result.success()) {
+                return Optional.of(new TextReply("您已结束人工服务，现在将由智能小助手继续为您服务。"));
+            }
+            return Optional.of(new TextReply(
+                    "已结束本地人工状态，但微信侧会话仍未释放。请稍候，或由客服人员在微信客服工作台点击“结束会话”后再试。"));
         }
 
         boolean enter = userConfigService.getKeywordsForHandler(externalUserId, "ManualChatHandler_Enter")

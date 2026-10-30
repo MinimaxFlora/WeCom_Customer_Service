@@ -9,8 +9,10 @@ import xlike.top.kn_ai_chat.domain.ChatMessage;
 import xlike.top.kn_ai_chat.domain.ManualTransferRequest;
 import xlike.top.kn_ai_chat.repository.ChatMessageRepository;
 import xlike.top.kn_ai_chat.repository.ManualTransferRepository;
+import xlike.top.kn_ai_chat.service.ManualTransferService;
 import xlike.top.kn_ai_chat.service.WeChatKfAccountService;
 import xlike.top.kn_ai_chat.service.WeChatService;
+import xlike.top.kn_ai_chat.service.WeChatServiceStateService;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,17 +29,20 @@ public class AdminChatController {
     private final WeChatService weChatService;
     private final StringRedisTemplate redisTemplate;
     private final WeChatKfAccountService weChatKfAccountService;
+    private final ManualTransferService manualTransferService;
 
     public AdminChatController(ManualTransferRepository requestRepository,
                                ChatMessageRepository chatMessageRepository,
                                StringRedisTemplate redisTemplate,
                                WeChatService weChatService,
-                               WeChatKfAccountService weChatKfAccountService) {
+                               WeChatKfAccountService weChatKfAccountService,
+                               ManualTransferService manualTransferService) {
         this.requestRepository = requestRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.redisTemplate = redisTemplate;
         this.weChatService = weChatService;
         this.weChatKfAccountService = weChatKfAccountService;
+        this.manualTransferService = manualTransferService;
     }
 
     private boolean isAdmin(HttpSession session) {
@@ -65,23 +70,19 @@ public class AdminChatController {
 
     @PostMapping("/api/chat/end-service/{userId}")
     @ResponseBody
-    public ResponseEntity<Void> endManualService(@PathVariable String userId, HttpSession session) {
+    public ResponseEntity<String> endManualService(@PathVariable String userId, HttpSession session) {
         if (!isAdmin(session)) {
             return ResponseEntity.status(401).build();
         }
 
-        // 删除Redis中的人工模式标记，让用户回归AI服务
-        String redisKey = "manual_chat_mode:" + userId;
-        redisTemplate.delete(redisKey);
-        // 将数据库中的请求标记为已解决
-        Optional<ManualTransferRequest> requestOpt = requestRepository.findByExternalUserId(userId);
-        requestOpt.ifPresent(request -> {
-            request.setResolved(true);
-            requestRepository.save(request);
-        });
-        // 主动推送一条消息给用户
+        WeChatServiceStateService.StateResult result = manualTransferService.resolve(userId);
+        if (!result.success()) {
+            return ResponseEntity.status(502).body(
+                    "微信侧人工会话结束失败：errcode=" + result.errcode()
+                            + "，请在微信客服工作台手动结束会话后再试。");
+        }
         String openKfid = weChatKfAccountService.getOpenKfid();
         weChatService.sendTextMessage(userId, openKfid, "人工服务已结束，现在将由智能小助手继续为您服务。");
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok("已结束人工服务，AI 已恢复接待。");
     }
 }
