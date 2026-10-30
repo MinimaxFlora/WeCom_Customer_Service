@@ -47,7 +47,12 @@ public class EnterpriseKnowledgeService {
             "退换", new String[]{"退货", "换货", "退款"},
             "产品", new String[]{"商品", "型号", "规格"},
             "公司", new String[]{"企业", "介绍", "简介"},
-            "联系", new String[]{"电话", "地址", "客服"}
+            "联系", new String[]{"电话", "地址", "客服"},
+            "套餐", new String[]{"价格", "收费", "多少钱", "费用", "价位", "产品"},
+            "收费", new String[]{"价格", "多少钱", "费用", "价位", "报价"}
+    );
+    private static final Set<String> STOP_TERMS = Set.of(
+            "都有", "有什", "什么", "么套", "怎么", "么收", "费的", "可以", "哪些", "这个", "那个"
     );
 
     private final KnowledgeBaseRepository knowledgeRepository;
@@ -328,6 +333,13 @@ public class EnterpriseKnowledgeService {
         double score = (double) matched / terms.size();
         if (lowerTitle.contains(query.toLowerCase(Locale.ROOT))) {
             score += 0.2;
+        } else {
+            for (String term : terms) {
+                if (lowerTitle.contains(term)) {
+                    score += 0.25;
+                    break;
+                }
+            }
         }
         return Math.min(1.0, score);
     }
@@ -341,10 +353,15 @@ public class EnterpriseKnowledgeService {
             }
             if (part.matches(".*[\\u4e00-\\u9fa5].*")) {
                 if (part.length() <= 2) {
-                    terms.add(part);
+                    if (!STOP_TERMS.contains(part)) {
+                        terms.add(part);
+                    }
                 } else {
                     for (int i = 0; i < part.length() - 1; i++) {
-                        terms.add(part.substring(i, i + 2));
+                        String term = part.substring(i, i + 2);
+                        if (!STOP_TERMS.contains(term)) {
+                            terms.add(term);
+                        }
                     }
                 }
                 for (Map.Entry<String, String[]> entry : SYNONYMS.entrySet()) {
