@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -52,13 +54,21 @@ public class WeChatService {
     private final UserConfigService userConfigService;
     private final WeChatUserService weChatUserService;
 
+    /**
+     * 通过自身代理调用 @Async 方法，避免同类自调用导致异步失效。
+     */
+    @Autowired
+    @Lazy
+    private WeChatService self;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private byte[] encodingAesKeyBytes;
     
     // 用于消息去重的Redis Key前缀
     private static final String PROCESSED_MSG_ID_KEY_PREFIX = "wechat:processed_msgid:";
-    // 用于存储消息拉取游标的Redis Key
-    private static final String MSG_CURSOR_KEY = "wechat:msg_cursor";
+    // 用于存储消息拉取游标的Redis Key前缀（按客服账号隔离）
+    private static final String MSG_CURSOR_KEY_PREFIX = "wechat:msg_cursor:";
+    private static final String SYNC_LOCK_KEY_PREFIX = "wechat:sync_lock:";
 
     public WeChatService(
             MessageLogRepository messageLogRepository,
@@ -108,14 +118,15 @@ public class WeChatService {
 
             byte[] decryptedBytes = WeChatUtils.decrypt(WeChatUtils.base64Decode(encryptedMsg), this.encodingAesKeyBytes);
             String decryptedXml = new String(decryptedBytes, StandardCharsets.UTF_8);
-            logger.info("解密后的消息: {}", decryptedXml);
+            logger.debug("解密后的消息长度: {}", decryptedXml.length());
 
             Map<String, String> messageMap = XmlParseUtil.xmlToMap(decryptedXml);
             String event = messageMap.get("Event");
 
             if ("kf_msg_or_event".equals(event)) {
-                // 异步处理消息，防止阻塞微信回调
-                syncAndProcessMessages(); 
+                String openKfid = messageMap.getOrDefault("OpenKfId", "default");
+                // 通过代理调用，确保 @Async 生效，避免阻塞微信 5 秒回调窗口
+                self.syncAndProcessMessages(openKfid);
             } else {
                 logger.info("接收到非拉取类型的事件，忽略处理: {}", event);
             }
@@ -135,114 +146,137 @@ public class WeChatService {
      * 该方法会从Redis读取上一次的游标，并仅处理最新的一条消息，然后保存新的游标。
      */
     @Async
-    public void syncAndProcessMessages() {
-        // 从Redis中获取上次保存的游标
-        String cursor = redisTemplate.opsForValue().get(MSG_CURSOR_KEY);
-        
-        // 循环拉取，直到没有更多消息
-        while (true) {
-            String accessToken = accessTokenManager.getAccessToken();
-            String url = "https://qyapi.weixin.qq.com/cgi-bin/kf/sync_msg?access_token=" + accessToken;
+    public void syncAndProcessMessages(String openKfid) {
+        String lockKey = SYNC_LOCK_KEY_PREFIX + openKfid;
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(acquired)) {
+            logger.debug("客服账号 [{}] 正在拉取消息，跳过重复触发", openKfid);
+            return;
+        }
 
-            Map<String, Object> requestBody = new HashMap<>();
-            if (cursor != null) {
-                requestBody.put("cursor", cursor);
-            }
-        
-            try {
-                String response = restTemplate.postForObject(url, requestBody, String.class);
-                logger.debug("拉取消息响应(sync_msg): {}", response);
-                JsonNode root = objectMapper.readTree(response);
+        try {
+            String cursor = redisTemplate.opsForValue().get(MSG_CURSOR_KEY_PREFIX + openKfid);
+            while (true) {
+                String accessToken = accessTokenManager.getAccessToken();
+                String url = "https://qyapi.weixin.qq.com/cgi-bin/kf/sync_msg?access_token=" + accessToken;
 
-                if (root.path("errcode").asInt() != 0) {
-                    logger.error("拉取消息(sync_msg)失败: {}", response);
+                Map<String, Object> requestBody = new HashMap<>();
+                if (cursor != null) {
+                    requestBody.put("cursor", cursor);
+                }
+
+                try {
+                    String response = restTemplate.postForObject(url, requestBody, String.class);
+                    logger.debug("拉取消息响应(sync_msg)长度: {}", response == null ? 0 : response.length());
+                    JsonNode root = objectMapper.readTree(response);
+
+                    if (root.path("errcode").asInt() != 0) {
+                        logger.error("拉取消息(sync_msg)失败，errcode={}", root.path("errcode").asInt());
+                        break;
+                    }
+
+                    JsonNode msgList = root.path("msg_list");
+                    if (msgList.isArray()) {
+                        for (JsonNode message : msgList) {
+                            processSinglePulledMessage(message, openKfid);
+                        }
+                    }
+
+                    String nextCursor = root.path("next_cursor").asText(null);
+                    if (nextCursor != null) {
+                        redisTemplate.opsForValue().set(MSG_CURSOR_KEY_PREFIX + openKfid, nextCursor);
+                        cursor = nextCursor;
+                    }
+
+                    if (root.path("has_more").asInt() == 0) {
+                        break;
+                    }
+                } catch (Exception e) {
+                    logger.error("调用拉取消息(sync_msg)接口失败", e);
                     break;
                 }
-                // 获取新的游标并立即保存到Redis，无论本次是否处理了消息。
-                // 这是为了确保下次能从正确的位置开始拉取。
-                String nextCursor = root.path("next_cursor").asText(null);
-                if (nextCursor != null) {
-                    redisTemplate.opsForValue().set(MSG_CURSOR_KEY, nextCursor);
-                    cursor = nextCursor;
-                }
-                JsonNode msgList = root.path("msg_list");
-                if (msgList.isArray() && !msgList.isEmpty()) {
-                    JsonNode latestMessage = msgList.get(msgList.size() - 1);
-                    processSinglePulledMessage(latestMessage);
-                }
-
-                // 如果微信服务器明确告知没有更多消息了，就退出循环
-                if (root.path("has_more").asInt() == 0) {
-                    logger.info("没有更多消息，结束本次拉取。");
-                    break;
-                }
-
-            } catch (Exception e) {
-                logger.error("调用拉取消息(sync_msg)接口失败", e);
-                break;
             }
+        } finally {
+            redisTemplate.delete(lockKey);
         }
     }
-    
+
     /**
      * 处理单条从API拉取的消息。包含幂等性检查。
      */
-    private void processSinglePulledMessage(JsonNode msgNode) {
+    private void processSinglePulledMessage(JsonNode msgNode, String eventOpenKfid) {
         // 对于事件类型的消息，如 "enter_session", "user_recall_msg"，它们没有 msgid，直接跳过
         if (!msgNode.has("msgid")) {
             return;
         }
 
-        String msgId = msgNode.get("msgid").asText();
-        String redisKey = PROCESSED_MSG_ID_KEY_PREFIX + msgId;
-    
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(redisKey)) || messageLogRepository.existsByMsgId(msgId)) {
-            logger.info("消息 {} 已被处理过，跳过。", msgId);
+        // origin: 3=客户，4=接待人员，5=系统。只处理客户消息，避免客服/机器人自发消息被再次处理。
+        int origin = msgNode.path("origin").asInt(3);
+        if (origin != 3) {
             return;
         }
-    
+
+        String msgId = msgNode.get("msgid").asText();
+        String redisKey = PROCESSED_MSG_ID_KEY_PREFIX + msgId;
+
+        // 原子占位，避免微信回调重试导致同一消息被并发处理两次
+        Boolean first = redisTemplate.opsForValue().setIfAbsent(redisKey, "processing", 48, TimeUnit.HOURS);
+        if (!Boolean.TRUE.equals(first) || messageLogRepository.existsByMsgId(msgId)) {
+            logger.debug("消息 {} 已被处理过，跳过。", msgId);
+            return;
+        }
+
         String msgType = msgNode.get("msgtype").asText();
-    
+
         String externalUserId = msgNode.has("external_userid") ? msgNode.get("external_userid").asText() :
                 (msgNode.has("event") && msgNode.get("event").has("external_userid") ? msgNode.get("event").get("external_userid").asText() : "UNKNOWN_USER");
         String openKfid = msgNode.has("open_kfid") ? msgNode.get("open_kfid").asText() :
-                (msgNode.has("event") && msgNode.get("event").has("open_kfid") ? msgNode.get("event").get("open_kfid").asText() : "UNKNOWN_KFID");
-    
-        if (!"UNKNOWN_USER".equals(externalUserId)) {
-            weChatUserService.getOrCreateUser(externalUserId);
-        }
-        // 检查用户是否被拉黑，这一步已在MessageDispatcher中实现，此处为双重保险
-        if(weChatUserService.isUserBlocked(externalUserId)) {
-             logger.info("用户 [{}] 已被拉黑，拒绝回复此消息: {}", externalUserId, msgId);
-             return;
-        }
+                (msgNode.has("event") && msgNode.get("event").has("open_kfid") ? msgNode.get("event").get("open_kfid").asText() : eventOpenKfid);
 
-        switch (msgType) {
-            case "text":
-                handleTextMessage(msgNode, externalUserId, openKfid);
-                break;
-            case "image":
-                handleImageMessage(msgNode, externalUserId, openKfid);
-                break;
-            case "voice":
-                handleVoiceMessage(msgNode, externalUserId, openKfid);
-                break;
-            case "file":
-                handleFileMessage(msgNode, externalUserId, openKfid);
-                break;
-            default:
-                logger.info("接收到未处理的消息类型: {}, 跳过处理。", msgType);
-                break;
+        try {
+            if (!"UNKNOWN_USER".equals(externalUserId)) {
+                weChatUserService.getOrCreateUser(externalUserId);
+            }
+            if (weChatUserService.isUserBlocked(externalUserId)) {
+                logger.info("用户 [{}] 已被拉黑，拒绝回复此消息: {}", externalUserId, msgId);
+                return;
+            }
+
+            switch (msgType) {
+                case "text":
+                    handleTextMessage(msgNode, externalUserId, openKfid);
+                    break;
+                case "image":
+                    handleImageMessage(msgNode, externalUserId, openKfid);
+                    break;
+                case "voice":
+                    handleVoiceMessage(msgNode, externalUserId, openKfid);
+                    break;
+                case "file":
+                    handleFileMessage(msgNode, externalUserId, openKfid);
+                    break;
+                default:
+                    logger.info("接收到未处理的消息类型: {}, 跳过处理。", msgType);
+                    break;
+            }
+            redisTemplate.opsForValue().set(redisKey, "processed", 48, TimeUnit.HOURS);
+        } catch (Exception e) {
+            // 处理失败时释放占位并删除半成品消息，允许微信下一次重试
+            redisTemplate.delete(redisKey);
+            try {
+                messageLogRepository.deleteByMsgId(msgId);
+            } catch (Exception ignored) {
+                // ignore
+            }
+            logger.error("处理消息 {} 失败，已释放重试占位", msgId, e);
         }
-        
-        redisTemplate.opsForValue().set(redisKey, "processed", 48, TimeUnit.HOURS);
     }
     
 
     private void handleTextMessage(JsonNode msgNode, String externalUserId, String openKfid) {
         String userContent = msgNode.get("text").get("content").asText().trim();
         saveMessageLog(msgNode.get("msgid").asText(), externalUserId, openKfid, "text", userContent);
-        logger.info("用户 [{}] 发送消息: {}", externalUserId, userContent);
+        logger.info("收到用户 [{}] 的文本消息，长度={}", externalUserId, userContent.length());
 
         List<MessageLog> history = messageLogRepository.findByFromUserOrToUserOrderByTimestampDesc(externalUserId, externalUserId, PageRequest.of(0, 10));
         Collections.reverse(history);
@@ -376,7 +410,7 @@ public class WeChatService {
     private void sendReply(Reply reply, String externalUserId, String openKfid) {
         switch (reply) {
             case TextReply textReply -> {
-                logger.info("准备发送给用户 [{}] 的文本: {}", externalUserId, textReply.content());
+                logger.info("准备发送给用户 [{}] 的文本，长度: {}", externalUserId, textReply.content().length());
                 sendTextMessage(externalUserId, openKfid, textReply.content());
                 saveMessageLog(null, openKfid, externalUserId, "text", textReply.content());
             }

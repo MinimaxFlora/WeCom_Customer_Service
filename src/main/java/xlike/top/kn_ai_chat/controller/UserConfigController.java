@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import xlike.top.kn_ai_chat.domain.AiConfig;
 import xlike.top.kn_ai_chat.domain.KeywordConfig;
+import xlike.top.kn_ai_chat.dto.AiConfigView;
 import xlike.top.kn_ai_chat.service.UserConfigService;
 
 import java.util.List;
@@ -23,9 +24,9 @@ public class UserConfigController {
     }
 
     @GetMapping("/ai/{externalUserId}")
-    public ResponseEntity<AiConfig> getAiConfig(@PathVariable String externalUserId) {
+    public ResponseEntity<AiConfigView> getAiConfig(@PathVariable String externalUserId) {
         AiConfig config = userConfigService.getAiConfig(externalUserId);
-        return ResponseEntity.ok(config);
+        return ResponseEntity.ok(AiConfigView.from(config));
     }
 
     @PostMapping("/ai")

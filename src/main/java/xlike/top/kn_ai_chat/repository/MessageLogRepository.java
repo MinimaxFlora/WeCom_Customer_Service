@@ -15,7 +15,10 @@ public interface MessageLogRepository extends JpaRepository<MessageLog, Long> {
     List<MessageLog> findByFromUserOrToUserOrderByTimestampDesc(String userId1, String userId2, Pageable pageable);
 
     boolean existsByMsgId(String msgId);
-    
+
+    @Transactional
+    void deleteByMsgId(String msgId);
+
     @Transactional
     void deleteByFromUserOrToUser(String fromUser, String toUser);
 

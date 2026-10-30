@@ -56,7 +56,7 @@ public class AccessTokenManager {
             logger.info("缓存中无 access_token，正在从微信API获取...");
             String url = "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=" + this.corpId + "&corpsecret=" + this.secret;
             String response = restTemplate.getForObject(url, String.class);
-            logger.info("获取 Access Token 响应: {}", response);
+            logger.info("请求微信 Access Token 完成");
 
             JsonNode root = objectMapper.readTree(response);
             if (root.path("errcode").asInt() == 0) {

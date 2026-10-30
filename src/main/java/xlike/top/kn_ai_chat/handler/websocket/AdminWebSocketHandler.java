@@ -76,7 +76,7 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
         String payload = message.getPayload();
-        logger.info("收到管理员消息: {}", payload);
+        logger.debug("收到管理员消息，长度: {}", payload.length());
 
         try {
             Map<String, Object> msgData = objectMapper.readValue(payload, new TypeReference<>() {
@@ -115,8 +115,8 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
             }
 
         } catch (Exception e) {
-            logger.error("处理或发送管理员消息失败: {}", payload, e);
-            session.sendMessage(new TextMessage("{\"error\":\"发送失败: " + e.getMessage() + "\"}"));
+            logger.error("处理或发送管理员消息失败", e);
+            session.sendMessage(new TextMessage("{\"error\":\"发送失败\"}"));
         }
     }
 

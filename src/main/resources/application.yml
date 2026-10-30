@@ -1,6 +1,11 @@
 server:
   # 应用端口。由 .env 文件中的 DOCKER_SERVER_PORT 决定
   port: ${DOCKER_SERVER_PORT}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
 
 spring:
   datasource:
@@ -20,6 +25,10 @@ spring:
     baseline-version: 1
     locations: classpath:db/migration
     validate-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
   data:
     redis:
       # Redis 配置，全部由 .env 文件决定

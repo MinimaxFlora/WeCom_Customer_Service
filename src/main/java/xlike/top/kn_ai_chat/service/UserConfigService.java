@@ -340,12 +340,25 @@ public class UserConfigService {
     }
 
     public AiConfig saveOrUpdateAiConfig(AiConfig aiConfig) {
-        aiConfig.setLastModified(LocalDateTime.now());
+        AiConfig existing = aiConfigRepository.findByExternalUserId(aiConfig.getExternalUserId()).orElse(null);
+        if (existing != null) {
+            if (isMaskedOrBlank(aiConfig.getAiApiKey())) {
+                aiConfig.setAiApiKey(existing.getAiApiKey());
+            }
+            if (isMaskedOrBlank(aiConfig.getRagApiKey())) {
+                aiConfig.setRagApiKey(existing.getRagApiKey());
+            }
+        }
         if (!StringUtils.hasText(aiConfig.getRagApiKey())) {
             aiConfig.setRagApiKey(aiConfig.getAiApiKey());
         }
+        aiConfig.setLastModified(LocalDateTime.now());
         logger.info("保存或更新用户 {} 的AI配置。", aiConfig.getExternalUserId());
         return aiConfigRepository.save(aiConfig);
+    }
+
+    private boolean isMaskedOrBlank(String value) {
+        return !StringUtils.hasText(value) || value.contains("****");
     }
 
     public Map<String, List<String>> getAllKeywords(String externalUserId) {

@@ -1,9 +1,11 @@
 package xlike.top.kn_ai_chat.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import xlike.top.kn_ai_chat.config.SecretCryptoConverter;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -22,6 +24,7 @@ public class McpAiConfig {
     @Column(nullable = false)
     private String baseUrl;
 
+    @Convert(converter = SecretCryptoConverter.class)
     @Column(nullable = false)
     private String apiKey;
 

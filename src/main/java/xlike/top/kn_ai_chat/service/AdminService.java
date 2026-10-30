@@ -118,7 +118,6 @@ public class AdminService {
      */
     public Reply executeTool(String externalUserId, String content) {
         AiConfig aiConfig = userConfigService.getAiConfig(externalUserId);
-        log.info("aiConfig : {}", aiConfig);
         String aiBaseUrl = aiConfig.getAiBaseUrl();
         if (aiBaseUrl.endsWith("/chat/completions")) {
             aiBaseUrl = aiBaseUrl.substring(0, aiBaseUrl.lastIndexOf("/chat/completions"));
