@@ -22,6 +22,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=build /workspace/target/kn_ai_chat-0.0.1-SNAPSHOT.jar /app/app.jar
+COPY LICENSE NOTICE /app/
 RUN mkdir -p /app/data /app/uploads
 
 EXPOSE 8081
