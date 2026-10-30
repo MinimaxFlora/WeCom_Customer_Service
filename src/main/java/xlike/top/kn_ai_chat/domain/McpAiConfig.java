@@ -1,5 +1,6 @@
 package xlike.top.kn_ai_chat.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -25,6 +26,7 @@ public class McpAiConfig {
     private String baseUrl;
 
     @Convert(converter = SecretCryptoConverter.class)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(nullable = false)
     private String apiKey;
 

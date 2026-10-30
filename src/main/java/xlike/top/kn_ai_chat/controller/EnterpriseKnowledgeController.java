@@ -18,11 +18,13 @@ import org.springframework.web.multipart.MultipartFile;
 import xlike.top.kn_ai_chat.dispatcher.MessageDispatcher;
 import xlike.top.kn_ai_chat.domain.Knowledge;
 import xlike.top.kn_ai_chat.domain.MessageLog;
+import xlike.top.kn_ai_chat.domain.WeChatUser;
 import xlike.top.kn_ai_chat.dto.KnowledgeHit;
 import xlike.top.kn_ai_chat.dto.KnowledgeRequest;
 import xlike.top.kn_ai_chat.dto.KnowledgeSummary;
 import xlike.top.kn_ai_chat.reply.Reply;
 import xlike.top.kn_ai_chat.reply.TextReply;
+import xlike.top.kn_ai_chat.repository.WeChatUserRepository;
 import xlike.top.kn_ai_chat.service.AiService;
 import xlike.top.kn_ai_chat.service.EnterpriseKnowledgeService;
 import xlike.top.kn_ai_chat.service.EnterpriseProfileService;
@@ -40,17 +42,20 @@ public class EnterpriseKnowledgeController {
     private final EnterpriseProfileService profileService;
     private final MessageDispatcher messageDispatcher;
     private final WeChatKfAccountService kfAccountService;
+    private final WeChatUserRepository userRepository;
 
     public EnterpriseKnowledgeController(EnterpriseKnowledgeService knowledgeService,
                                          AiService aiService,
                                          EnterpriseProfileService profileService,
                                          MessageDispatcher messageDispatcher,
-                                         WeChatKfAccountService kfAccountService) {
+                                         WeChatKfAccountService kfAccountService,
+                                         WeChatUserRepository userRepository) {
         this.knowledgeService = knowledgeService;
         this.aiService = aiService;
         this.profileService = profileService;
         this.messageDispatcher = messageDispatcher;
         this.kfAccountService = kfAccountService;
+        this.userRepository = userRepository;
     }
 
     private boolean isAdmin(HttpSession session) {
@@ -182,6 +187,15 @@ public class EnterpriseKnowledgeController {
         String openKfid = kfAccountService.getOpenKfid();
         if (openKfid == null || openKfid.isBlank()) {
             openKfid = "default";
+        }
+        // 模拟用户必须存在，否则人工接管表的外键会失败
+        if (!userRepository.existsById(userId)) {
+            WeChatUser user = new WeChatUser();
+            user.setExternalUserId(userId);
+            user.setNickname("模拟测试用户");
+            user.setBlocked(false);
+            user.setLastUpdated(java.time.LocalDateTime.now());
+            userRepository.save(user);
         }
         MessageLog message = new MessageLog();
         message.setFromUser(userId);

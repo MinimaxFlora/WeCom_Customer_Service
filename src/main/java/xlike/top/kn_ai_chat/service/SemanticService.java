@@ -60,7 +60,7 @@ public class SemanticService {
 
         try {
             String responseStr = restTemplate.postForObject(aiConfig.getAiBaseUrl(), requestEntity, String.class);
-            logger.info("语义服务API响应: {}", responseStr);
+            logger.debug("语义服务API响应长度: {}", responseStr == null ? 0 : responseStr.length());
 
             JsonNode root = objectMapper.readTree(responseStr);
             if (root.has("choices") && root.get("choices").isArray() && !root.get("choices").isEmpty()) {
