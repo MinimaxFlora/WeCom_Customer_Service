@@ -16,6 +16,12 @@ public class ManualTransferRequest {
     @Column(nullable = false, unique = true)
     private String externalUserId;
 
+    @Column(length = 100)
+    private String openKfid;
+
+    @Column(length = 200)
+    private String conversationId;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "externalUserId", referencedColumnName = "externalUserId", insertable = false, updatable = false)
     private WeChatUser user;

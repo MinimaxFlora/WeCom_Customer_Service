@@ -304,6 +304,10 @@ public class UserConfigService {
         newConfig.setRagModel(templateConfig.getRagModel());
         newConfig.setRagBaseUrl(templateConfig.getRagBaseUrl());
         newConfig.setRagApiKey(templateConfig.getRagApiKey());
+        newConfig.setTemperature(templateConfig.getTemperature());
+        newConfig.setMaxTokens(templateConfig.getMaxTokens());
+        newConfig.setAnswerPolicy(templateConfig.getAnswerPolicy());
+        newConfig.setHandoffPolicy(templateConfig.getHandoffPolicy());
 
         return processPrompt(newConfig);
     }
@@ -328,6 +332,10 @@ public class UserConfigService {
         fallbackConfig.setRagModel(defaultRagModel);
         fallbackConfig.setRagBaseUrl(defaultRagBaseUrl);
         fallbackConfig.setRagApiKey(defaultRagApiKey);
+        fallbackConfig.setTemperature(0.3);
+        fallbackConfig.setMaxTokens(2000);
+        fallbackConfig.setAnswerPolicy("STRICT");
+        fallbackConfig.setHandoffPolicy("SUGGEST");
         return processPrompt(fallbackConfig);
     }
 

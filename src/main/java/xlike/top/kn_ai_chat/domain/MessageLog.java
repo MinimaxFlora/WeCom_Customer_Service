@@ -27,6 +27,12 @@ public class MessageLog {
     private String toUser;
     private String msgType;
 
+    @Column(length = 100)
+    private String openKfid;
+
+    @Column(length = 200)
+    private String conversationId;
+
     @Column(columnDefinition = "TEXT")
     private String content;
 

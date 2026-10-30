@@ -63,5 +63,23 @@ public class AiConfig {
 
 
     @Column(nullable = false)
+    private double temperature = 0.3;
+
+    @Column(nullable = false)
+    private int maxTokens = 2000;
+
+    /**
+     * STRICT：严格依据企业资料；BALANCED：资料不足时允许通用回答。
+     */
+    @Column(nullable = false, length = 20)
+    private String answerPolicy = "STRICT";
+
+    /**
+     * SUGGEST：建议转人工；AUTO：自动创建人工请求。
+     */
+    @Column(nullable = false, length = 20)
+    private String handoffPolicy = "SUGGEST";
+
+    @Column(nullable = false)
     private LocalDateTime lastModified;
 }

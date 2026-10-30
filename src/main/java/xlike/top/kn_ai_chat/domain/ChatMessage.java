@@ -23,6 +23,12 @@ public class ChatMessage {
     @Column(nullable = false)
     private String externalUserId;
 
+    @Column(length = 100)
+    private String openKfid;
+
+    @Column(length = 200)
+    private String conversationId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     // 标记是管理员还是用户发送

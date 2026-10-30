@@ -50,9 +50,15 @@ public class KnowledgeBaseService {
             }
             Knowledge entry = new Knowledge();
             entry.setExternalUserId(externalUserId);
+            entry.setEnterpriseId("default");
+            entry.setScope("PERSONAL");
+            entry.setSourceType("WECHAT_FILE");
+            entry.setStatus("READY");
+            entry.setTitle(fileName);
             entry.setFileName(fileName);
             entry.setContent(content);
             entry.setCreatedAt(LocalDateTime.now());
+            entry.setUpdatedAt(LocalDateTime.now());
 
             repository.save(entry);
             logger.info("用户 [{}] 的文件 '{}' 已成功存入知识库。", externalUserId, fileName);
@@ -70,7 +76,7 @@ public class KnowledgeBaseService {
      * @return 知识库条目列表
      */
     public List<Knowledge> listFilesForUser(String externalUserId) {
-        return repository.findByExternalUserId(externalUserId);
+        return repository.findByExternalUserIdAndScopeOrderByCreatedAtDesc(externalUserId, "PERSONAL");
     }
 
     /**
@@ -154,7 +160,7 @@ public class KnowledgeBaseService {
      * @return 拼接好的知识库上下文
      */
     public String retrieveKnowledgeForUser(String externalUserId) {
-        List<Knowledge> entries = repository.findByExternalUserId(externalUserId);
+        List<Knowledge> entries = repository.findByExternalUserIdAndScopeOrderByCreatedAtDesc(externalUserId, "PERSONAL");
         if (entries.isEmpty()) {
             return "";
         }

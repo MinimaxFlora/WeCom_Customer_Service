@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业资料</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .section-title { border-left: 4px solid #0d6efd; padding-left: 10px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+<div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-building"></i> 企业资料</h1>
+        <div>
+            <a href="/admin/users" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回用户列表</a>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        单企业部署：这里维护的企业资料会作为 AI 客服的企业背景。客户不需要知道知识库的存在。
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form id="enterpriseForm">
+                <h4 class="section-title">基础信息</h4>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="name" class="form-label">企业名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="industry" class="form-label">所属行业</label>
+                        <input type="text" class="form-control" id="industry" name="industry">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="intro" class="form-label">企业简介</label>
+                    <textarea class="form-control" id="intro" name="intro" rows="5"
+                              placeholder="介绍企业是做什么的、服务哪些客户、有什么优势"></textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="phone" class="form-label">联系电话</label>
+                        <input type="text" class="form-control" id="phone" name="phone">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="website" class="form-label">官方网站</label>
+                        <input type="text" class="form-control" id="website" name="website">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="businessHours" class="form-label">营业时间</label>
+                        <input type="text" class="form-control" id="businessHours" name="businessHours"
+                               placeholder="例如：周一至周五 9:00-18:00">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="address" class="form-label">企业地址</label>
+                        <input type="text" class="form-control" id="address" name="address">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="serviceScope" class="form-label">服务范围</label>
+                    <textarea class="form-control" id="serviceScope" name="serviceScope" rows="3"
+                              placeholder="例如：全国范围、售前咨询、售后维修、企业定制"></textarea>
+                </div>
+
+                <h4 class="section-title mt-4">微信客服信息</h4>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="wechatCorpId" class="form-label">企业微信 CorpID</label>
+                        <input type="text" class="form-control" id="wechatCorpId" name="wechatCorpId" readonly>
+                        <div class="form-text">来自部署配置，不允许在页面修改。</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="defaultOpenKfid" class="form-label">默认客服账号 open_kfid</label>
+                        <input type="text" class="form-control" id="defaultOpenKfid" name="defaultOpenKfid" readonly>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-save"></i> 保存企业资料</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = '/admin/api/enterprise';
+    const fields = ['name', 'intro', 'industry', 'address', 'phone', 'website',
+        'businessHours', 'serviceScope', 'wechatCorpId', 'defaultOpenKfid'];
+
+    async function loadProfile() {
+        const response = await fetch(API);
+        if (response.status === 401) {
+            window.location.href = '/admin/login';
+            return;
+        }
+        if (!response.ok) {
+            throw new Error('加载企业资料失败');
+        }
+        const profile = await response.json();
+        fields.forEach(key => {
+            const el = document.getElementById(key);
+            if (el) el.value = profile[key] || '';
+        });
+    }
+
+    document.getElementById('enterpriseForm').addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const payload = {};
+        fields.forEach(key => {
+            const el = document.getElementById(key);
+            if (el) payload[key] = el.value;
+        });
+        try {
+            const response = await fetch(API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            alert('企业资料已保存');
+            await loadProfile();
+        } catch (error) {
+            alert('保存失败：' + error.message);
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', loadProfile);
+</script>
+</body>
+</html>
