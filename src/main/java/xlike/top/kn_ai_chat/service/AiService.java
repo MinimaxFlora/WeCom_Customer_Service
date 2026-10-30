@@ -323,13 +323,7 @@ public class AiService {
                     String contentJsonString = firstChoice.get("message").get("content").asText();
                     logger.debug("准备解析AI内容JSON，长度: {}", contentJsonString.length());
                     JsonNode contentRoot = objectMapper.readTree(contentJsonString);
-
-                    if (contentRoot.isObject()) {
-                        return extractReplyText(contentRoot);
-                    } else if (contentRoot.isArray() && !contentRoot.isEmpty()) {
-                        return extractReplyText(contentRoot.get(0));
-                    }
-                    return "AI返回了无效的JSON格式。";
+                    return parseAiContent(contentRoot);
                 }
             }
         } catch (Exception e) {
@@ -337,6 +331,81 @@ public class AiService {
         }
 
         return "抱歉，AI服务当前不可用，请稍后再试。";
+    }
+
+    /**
+     * 兼容大模型偶尔不按 JSON 对象返回的情况：
+     * 纯文本、JSON 字符串、对象、数组都尽量提取成给客户的文字。
+     */
+    private String parseAiContent(JsonNode contentRoot) {
+        if (contentRoot == null || contentRoot.isNull()) {
+            logger.warn("AI返回内容为 null");
+            return "抱歉，我暂时无法回答这个问题，请稍后再试或回复“转人工”。";
+        }
+        if (contentRoot.isTextual()) {
+            String text = contentRoot.asText();
+            if (text == null || text.isBlank()) {
+                return "抱歉，我暂时无法回答这个问题，请稍后再试或回复“转人工”。";
+            }
+            // 兼容模型把 JSON 再包一层字符串的情况
+            try {
+                JsonNode nested = objectMapper.readTree(text);
+                if (nested.isObject() || nested.isArray()) {
+                    String reply = extractReplyText(nested);
+                    if (reply != null && !reply.startsWith("AI回复格式错误")) {
+                        return reply;
+                    }
+                }
+            } catch (Exception ignored) {
+                // 普通文本，直接返回
+            }
+            return text;
+        }
+        if (contentRoot.isObject() || (contentRoot.isArray() && !contentRoot.isEmpty())) {
+            JsonNode target = contentRoot.isArray() ? contentRoot.get(0) : contentRoot;
+            String reply = extractReplyText(target);
+            if (reply != null && !reply.startsWith("AI回复格式错误")) {
+                return reply;
+            }
+            String fallback = findAnyText(target);
+            if (fallback != null && !fallback.isBlank()) {
+                return fallback;
+            }
+        }
+        logger.warn("AI返回内容不是对象/数组/文本，类型={}", contentRoot.getNodeType());
+        return "抱歉，我暂时无法回答这个问题，请稍后再试或回复“转人工”。";
+    }
+
+    private String findAnyText(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        if (node.isObject()) {
+            for (String key : new String[]{"reply_text", "reply", "content", "answer", "text"}) {
+                JsonNode value = node.get(key);
+                if (value != null && value.isTextual() && !value.asText().isBlank()) {
+                    return value.asText();
+                }
+            }
+            for (JsonNode child : node) {
+                String result = findAnyText(child);
+                if (result != null && !result.isBlank()) {
+                    return result;
+                }
+            }
+        }
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                String result = findAnyText(child);
+                if (result != null && !result.isBlank()) {
+                    return result;
+                }
+            }
+        }
+        return null;
     }
 
     /**
